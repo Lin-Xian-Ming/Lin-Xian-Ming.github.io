@@ -1,0 +1,471 @@
+/**
+ * 八字增强模块 - 颜色系统、流年流月、详细分析
+ */
+
+// ========== 五行颜色系统 ==========
+var WUXING_COLORS = {
+  '金': '#DAA520',  // 金色
+  '木': '#228B22',  // 绿色
+  '水': '#1B4F72',  // 蓝色
+  '火': '#C0392B',  // 红色
+  '土': '#8B4513'   // 褐色
+};
+
+var WUXING_COLORS_LIGHT = {
+  '金': '#FFF8DC',
+  '木': '#F0FFF0',
+  '水': '#F0F8FF',
+  '火': '#FFF5F5',
+  '土': '#FFF8F0'
+};
+
+var WUXING_COLORS_BORDER = {
+  '金': '#DAA520',
+  '木': '#90EE90',
+  '水': '#87CEEB',
+  '火': '#F5B7B1',
+  '土': '#DEB887'
+};
+
+var WUXING_ICONS = {
+  '金': '⚜',
+  '木': '🌿',
+  '水': '💧',
+  '火': '🔥',
+  '土': '⛰'
+};
+
+var WUXING_NAMES = {
+  '金': '金属',
+  '木': '木属',
+  '水': '水属',
+  '火': '火属',
+  '土': '土属'
+};
+
+// ========== 流年计算引擎 ==========
+function calculateLiuNian(bazi, targetYear) {
+  var nianGanIdx = (targetYear - 4) % 10;
+  if (nianGanIdx < 0) nianGanIdx += 10;
+  var nianZhiIdx = (targetYear - 4) % 12;
+  if (nianZhiIdx < 0) nianZhiIdx += 12;
+  
+  var liuNianGan = TIAN_GAN[nianGanIdx];
+  var liuNianZhi = DI_ZHI[nianZhiIdx];
+  var liuNianGanZhi = liuNianGan + liuNianZhi;
+  
+  // 流年与日主的关系
+  var riGan = bazi.riGan;
+  var liuNianShiShen = SHI_SHEN_MAP[riGan][liuNianGan];
+  
+  // 流年五行
+  var liuNianWuxing = GAN_WUXING[liuNianGan];
+  
+  // 流年纳音
+  var liuNianNayin = NAYIN_MAP[liuNianGanZhi] || '';
+  
+  // 流年与各柱关系
+  var interactions = [];
+  var pillars = [
+    { name: '年柱', gz: bazi.yearPillar.ganZhi, gan: bazi.yearPillar.gan, zhi: bazi.yearPillar.zhi },
+    { name: '月柱', gz: bazi.monthPillar.ganZhi, gan: bazi.monthPillar.gan, zhi: bazi.monthPillar.zhi },
+    { name: '日柱', gz: bazi.dayPillar.ganZhi, gan: bazi.dayPillar.gan, zhi: bazi.dayPillar.zhi },
+    { name: '时柱', gz: bazi.hourPillar.ganZhi, gan: bazi.hourPillar.gan, zhi: bazi.hourPillar.zhi }
+  ];
+  
+  pillars.forEach(function(p) {
+    // 天干关系
+    var ganRelation = SHI_SHEN_MAP[riGan][liuNianGan];
+    
+    // 天合地合
+    var tianHe = isTianGanHe(liuNianGan, p.gan);
+    var diHe = isDiZhiHe(liuNianZhi, p.zhi);
+    var diChong = DI_ZHI_LIU_CHONG[liuNianZhi] === p.zhi;
+    
+    interactions.push({
+      pillar: p.name,
+      ganRelation: ganRelation,
+      tianHe: tianHe,
+      diHe: diHe,
+      diChong: diChong,
+      isDayZhu: (p.name === '日柱')
+    });
+  });
+  
+  // 流年神煞
+  var liuNianShenSha = [];
+  var nianZhi = bazi.yearPillar.zhi;
+  var riZhi = bazi.dayPillar.zhi;
+  
+  // 驿马
+  var sanHeKey = getSanHeKey(riZhi);
+  if (YI_MA[sanHeKey] === liuNianZhi) liuNianShenSha.push('驿马');
+  
+  // 桃花
+  if (TAO_HUA[sanHeKey] === liuNianZhi) liuNianShenSha.push('桃花');
+  
+  // 天乙贵人
+  var tianYiStr = TIAN_YI_GUI_REN[riGan] || '';
+  if (tianYiStr.includes(liuNianZhi)) liuNianShenSha.push('天乙贵人');
+  
+  return {
+    year: targetYear,
+    ganZhi: liuNianGanZhi,
+    gan: liuNianGan,
+    zhi: liuNianZhi,
+    wuxing: liuNianWuxing,
+    nayin: liuNianNayin,
+    shiShen: liuNianShiShen,
+    interactions: interactions,
+    shenSha: liuNianShenSha
+  };
+}
+
+function getSanHeKey(zhi) {
+  if ('寅午戌'.indexOf(zhi) >= 0) return '寅午戌';
+  if ('申子辰'.indexOf(zhi) >= 0) return '申子辰';
+  if ('巳酉丑'.indexOf(zhi) >= 0) return '巳酉丑';
+  if ('亥卯未'.indexOf(zhi) >= 0) return '亥卯未';
+  return '';
+}
+
+function isTianGanHe(g1, g2) {
+  var heMap = { '甲己':true, '己甲':true, '乙庚':true, '庚乙':true, '丙辛':true, '辛丙':true, '丁壬':true, '壬丁':true, '戊癸':true, '癸戊':true };
+  return heMap[g1 + g2] || false;
+}
+
+function isDiZhiHe(z1, z2) {
+  var combo = z1 + z2;
+  var comboR = z2 + z1;
+  return (DI_ZHI_LIU_HE[combo] || DI_ZHI_LIU_HE[comboR]) ? true : false;
+}
+
+// ========== 流月计算引擎 ==========
+function calculateLiuYue(bazi, targetYear, targetMonth) {
+  // 月份地支（寅月=正月，通常是2月立春后）
+  var yueZhiIdx = targetMonth - 2; // 1月=丑(11), 2月=寅(0)...
+  if (yueZhiIdx < 0) yueZhiIdx += 12;
+  var yueZhi = YUE_ZHI[yueZhiIdx];
+  
+  // 流年年干
+  var nianGanIdx = (targetYear - 4) % 10;
+  if (nianGanIdx < 0) nianGanIdx += 10;
+  var nianGan = TIAN_GAN[nianGanIdx];
+  
+  // 月干
+  var yueGan = YUE_GAN_MAP[nianGan][yueZhiIdx];
+  var yueGanZhi = yueGan + yueZhi;
+  
+  // 与日主的关系
+  var riGan = bazi.riGan;
+  var shiShen = SHI_SHEN_MAP[riGan][yueGan];
+  var wuxing = GAN_WUXING[yueGan];
+  
+  // 与日柱地支的关系
+  var riZhi = bazi.dayPillar.zhi;
+  var diChong = DI_ZHI_LIU_CHONG[yueZhi] === riZhi;
+  var diHe = isDiZhiHe(yueZhi, riZhi);
+  
+  return {
+    year: targetYear,
+    month: targetMonth,
+    ganZhi: yueGanZhi,
+    gan: yueGan,
+    zhi: yueZhi,
+    wuxing: wuxing,
+    shiShen: shiShen,
+    diChong: diChong,
+    diHe: diHe
+  };
+}
+
+// ========== 流年详细事件预测 ==========
+function predictLiuNianEvents(liuNian, bazi) {
+  var events = [];
+  var riWuxing = bazi.riWuxing;
+  var liuNianWuxing = liuNian.wuxing;
+  var str = baziEngine.judgeDayMasterStrength(bazi);
+  var isWang = str.indexOf('旺') >= 0;
+  var isRuo = str.indexOf('弱') >= 0;
+  
+  // 判断流年喜忌
+  var isXi = false;
+  if (isWang) {
+    isXi = (liuNianWuxing !== riWuxing); // 身旺喜克泄耗
+  } else if (isRuo) {
+    isXi = (liuNianWuxing === riWuxing); // 身弱喜生扶
+  }
+  
+  // 流年十神事件
+  switch(liuNian.shiShen) {
+    case '正官':
+      events.push(isXi ? '事业发展顺利，有升职、获得认可的机会' : '工作压力增大，需注意与上级关系');
+      events.push(isXi ? '人际关系和谐，适合拓展社交圈' : '谨防口舌是非，言行需谨慎');
+      break;
+    case '偏官':
+      events.push(isXi ? '事业有突破性进展，适合开拓新领域' : '职场竞争激烈，小人暗算，注意防范');
+      events.push('适合健身锻炼，增强体质，化解煞气');
+      break;
+    case '正财':
+      events.push(isXi ? '财运稳定增长，正职收入提升' : '开销增大，需控制支出，避免冲动消费');
+      events.push(isXi ? '适合储蓄、理财规划' : '不宜大额投资，保守理财为宜');
+      break;
+    case '偏财':
+      events.push(isXi ? '意外之财，投资运佳，适合副业发展' : '投机易亏损，谨防金钱陷阱，不熟不做');
+      events.push(isXi ? '人际关系活跃，社交带来机遇' : '容易因朋友破财，借贷需谨慎');
+      break;
+    case '食神':
+      events.push('创造力旺盛，适合学习、创作、艺术活动');
+      events.push('心情愉悦，口福佳，适合旅行休闲');
+      events.push(isXi ? '才华得到认可，有展现自我的机会' : '容易懒散，需保持自律');
+      break;
+    case '伤官':
+      events.push('思维活跃，有新想法新创意');
+      events.push(isXi ? '才华横溢，适合创业、创新项目' : '言辞犀利易得罪人，注意沟通方式');
+      events.push('适合技术学习、进修深造');
+      break;
+    case '正印':
+      events.push(isXi ? '贵人运强，得到长辈、领导帮助' : '过于依赖他人，需增强独立性');
+      events.push('适合学习深造、考取证书');
+      events.push('家庭关系和睦，适合购房置业');
+      break;
+    case '偏印':
+      events.push('适合学习特殊技能、研究型工作');
+      events.push(isXi ? '有独特创意和灵感' : '容易胡思乱想，需保持心理平衡');
+      events.push('玄学、哲学、心理学方面有感悟');
+      break;
+    case '比肩':
+      events.push(isXi ? '朋友助力，团队合作顺利' : '竞争加剧，容易被同事超越');
+      events.push('精力充沛，适合开展新计划');
+      events.push('注意兄弟姐妹关系维护');
+      break;
+    case '劫财':
+      events.push(isXi ? '人脉拓展，合作共赢' : '易破财，不宜与人合伙投资');
+      events.push('社交活跃，但需防范小人');
+      events.push(isXi ? '团队项目有进展' : '注意合同纠纷、财务分歧');
+      break;
+  }
+  
+  // 流年神煞事件
+  liuNian.shenSha.forEach(function(ss) {
+    switch(ss) {
+      case '驿马': events.push('驿马星动，适合出行、搬家、换工作，动中求财'); break;
+      case '桃花': events.push('桃花入运，异性缘佳，单身者有望脱单，已婚者需把握分寸'); break;
+      case '天乙贵人': events.push('天乙贵人照命，遇事有人帮，逢凶化吉'); break;
+    }
+  });
+  
+  // 天地冲合
+  liuNian.interactions.forEach(function(inter) {
+    if (inter.diChong && inter.isDayZhu) {
+      events.push('流年冲日柱，此年变动较大，可能搬家、换工作、感情变动');
+    }
+    if (inter.diHe && inter.isDayZhu) {
+      events.push('流年合日柱，此年有新的合作、新的关系或新的机遇');
+    }
+    if (inter.tianHe && inter.isDayZhu) {
+      events.push('流年天干合日主，有贵人相助，事情有转机');
+    }
+  });
+  
+  return {
+    isXi: isXi,
+    events: events
+  };
+}
+
+// ========== 大运详细事件预测 ==========
+function predictDaYunEvents(daYunStep, bazi, qiYunAge) {
+  var startAge = qiYunAge + daYunStep * 10;
+  var endAge = startAge + 9;
+  var yunGanZhi = bazi.daYun[daYunStep].ganZhi;
+  var yunGan = bazi.daYun[daYunStep].gan;
+  var yunWuxing = GAN_WUXING[yunGan];
+  var riWuxing = bazi.riWuxing;
+  var str = baziEngine.judgeDayMasterStrength(bazi);
+  var isWang = str.indexOf('旺') >= 0;
+  var isRuo = str.indexOf('弱') >= 0;
+  var isXi = false;
+  
+  if (isWang) isXi = (yunWuxing !== riWuxing);
+  else if (isRuo) isXi = (yunWuxing === riWuxing);
+  
+  var events = [];
+  
+  // 根据年龄段和运程给出预测
+  if (startAge < 20) {
+    if (isXi) {
+      events.push('青少年时期顺遂，学业进步，得到师长喜爱');
+      events.push('身体健康，精力充沛，适合培养特长');
+    } else {
+      events.push('青少年时期多波折，学业需加倍努力');
+      events.push('注意身体健康，避免运动伤害');
+    }
+  } else if (startAge < 35) {
+    if (isXi) {
+      events.push('事业起步顺利，有机会进入理想行业');
+      events.push('财运渐入佳境，适合积累第一桶金');
+      events.push('感情方面有机遇，适合谈婚论嫁');
+    } else {
+      events.push('事业起步艰难，需脚踏实地打好基础');
+      events.push('注意职场人际关系，避免与人冲突');
+      events.push('感情方面宜缓不宜急，晚婚为佳');
+    }
+  } else if (startAge < 50) {
+    if (isXi) {
+      events.push('事业达到高峰，有升职或创业成功的机会');
+      events.push('财运亨通，适合投资理财扩大资产');
+      events.push('家庭稳定，子女运势良好');
+    } else {
+      events.push('中年危机显现，事业需稳中求进');
+      events.push('注意身体健康，定期体检');
+      events.push('家庭关系需要更多经营与沟通');
+    }
+  } else if (startAge < 65) {
+    if (isXi) {
+      events.push('事业仍有发展，经验丰富受人尊重');
+      events.push('财运稳定，适合保守理财');
+      events.push('子女成才，家庭和睦');
+    } else {
+      events.push('事业宜守不宜攻，退居二线为佳');
+      events.push('注意慢性病，养生保健需重视');
+      events.push('为子女之事操心较多');
+    }
+  } else {
+    if (isXi) {
+      events.push('晚运亨通，安享晚年，身体健康');
+      events.push('子女孝顺，家庭幸福美满');
+    } else {
+      events.push('晚年需注意健康，保持乐观心态');
+      events.push('宜清静修养，不宜操劳');
+    }
+  }
+  
+  return {
+    ageRange: startAge + '-' + endAge + '岁',
+    isXi: isXi,
+    events: events
+  };
+}
+
+// ========== 十神详解（现代版） ==========
+function getShiShenDetail(shiShenName, wuxing) {
+  var details = {
+    '比肩': {
+      nature: '自我意识强，独立自主，有竞争意识',
+      modern: '适合创业、自由职业、竞技体育。在现代社会中，比肩代表个人品牌、自我实现。',
+      career: '运动员、创业者、自由职业者、个体户',
+      relationship: '朋友多但知心少，需要学会合作与分享',
+      advice: '发挥独立优势，同时学习团队协作',
+      strength: '执行力强，有主见，不依赖他人',
+      weakness: '固执己见，不善合作，容易树敌'
+    },
+    '劫财': {
+      nature: '讲义气，社交能力强，但容易破财',
+      modern: '适合销售、公关、社交型工作。在现代社会中代表社交网络、人脉资源。',
+      career: '销售、公关、经纪人、社群运营',
+      relationship: '人缘好但需防范损友，不宜与人合伙',
+      advice: '善用人脉但不依赖人脉，保持财务独立',
+      strength: '社交能力强，人脉广，重情义',
+      weakness: '容易受人牵连破财，判断力受情感影响'
+    },
+    '食神': {
+      nature: '温和善良，有创造力，享受生活',
+      modern: '适合艺术、美食、设计、内容创作。在现代社会代表创意经济、内容IP。',
+      career: '艺术家、设计师、厨师、作家、自媒体',
+      relationship: '性格温和，异性缘佳，懂得浪漫',
+      advice: '发挥创意天赋，将兴趣变成事业',
+      strength: '创造力强，乐观豁达，有艺术天赋',
+      weakness: '容易满足现状，缺乏进取心，过于安逸'
+    },
+    '伤官': {
+      nature: '才华横溢，聪明机智，锋芒毕露',
+      modern: '适合科技、研发、咨询、演讲。在现代社会代表技术创新、知识付费。',
+      career: '程序员、科学家、咨询师、演说家、发明家',
+      relationship: '理想主义，对伴侣要求高，女命需注意婚姻',
+      advice: '收敛锋芒，学会换位思考，以柔克刚',
+      strength: '智商高，创新能力强，不拘一格',
+      weakness: '恃才傲物，言辞犀利，容易得罪人'
+    },
+    '偏财': {
+      nature: '慷慨大方，商业头脑，投机意识强',
+      modern: '适合投资、贸易、金融、互联网商业。在现代社会代表资本运作、风口投资。',
+      career: '投资人、商人、金融从业者、电商',
+      relationship: '慷慨大方但感情不够专一，需注意家庭稳定',
+      advice: '把握机遇但控制风险，不熟不做',
+      strength: '商业嗅觉敏锐，敢于冒险，交际广泛',
+      weakness: '财运起伏大，不善守财，投机心理重'
+    },
+    '正财': {
+      nature: '勤劳节俭，重视积蓄，对家庭负责',
+      modern: '适合稳定工作、财务管理、公务员。在现代社会代表工资收入、稳定资产。',
+      career: '会计师、公务员、银行职员、工程师',
+      relationship: '重视家庭，对伴侣忠诚，是可靠的另一半',
+      advice: '适度消费享受生活，过于节俭反而限制发展',
+      strength: '踏实可靠，理财能力强，责任心重',
+      weakness: '过于保守，缺乏冒险精神，格局受限'
+    },
+    '偏官': {
+      nature: '有魄力，有权威，事业心强，刚毅果敢',
+      modern: '适合管理、军警、创业、竞争性行业。在现代社会代表领导力、危机处理。',
+      career: '企业高管、军官、警察、创业者、律师',
+      relationship: '控制欲较强，需要学习温柔对待伴侣',
+      advice: '压力即动力，学会减压和情绪管理',
+      strength: '领导力强，果断勇敢，不畏挑战',
+      weakness: '压力大，容易焦虑，人际关系紧张'
+    },
+    '正官': {
+      nature: '遵纪守法，重视名誉，正直守信',
+      modern: '适合公务员、大型企业、教育、法律。在现代社会代表职业经理人、合规管理。',
+      career: '公务员、教师、法官、企业管理者',
+      relationship: '对感情认真负责，是理想的结婚对象',
+      advice: '保持原则的同时增加灵活性，适当变通',
+      strength: '正直可靠，有责任心，受人尊敬',
+      weakness: '过于保守，缺乏变通，错失机遇'
+    },
+    '偏印': {
+      nature: '有特殊才能，思维独特，善于钻研',
+      modern: '适合科研、玄学、心理、小众领域。在现代社会代表极客精神、深度专业。',
+      career: '研究员、命理师、心理咨询师、技术专家',
+      relationship: '与六亲缘薄，需要主动维护家庭关系',
+      advice: '将独特思维转化为实用价值，多与人交流',
+      strength: '思维深刻，有特殊天赋，专注力强',
+      weakness: '孤僻寡合，不善交际，与社会脱节'
+    },
+    '正印': {
+      nature: '仁慈善良，有学识，得贵人相助',
+      modern: '适合教育、医疗、文化、公益事业。在现代社会代表知识传承、社会服务。',
+      career: '教师、医生、作家、慈善工作者',
+      relationship: '温和体贴，家庭观念强，与长辈关系好',
+      advice: '在依赖贵人帮助的同时，也要培养独立性',
+      strength: '善良正直，学识渊博，贵人多助',
+      weakness: '依赖性强，缺乏主见，容易被人利用'
+    }
+  };
+  
+  return details[shiShenName] || null;
+}
+
+// ========== 神煞详解（现代版） ==========
+function getShenShaDetail(shenShaName) {
+  var details = {
+    '天乙贵人': '最吉之神，代表贵人运。在现代社会中，天乙贵人可理解为"关键时刻遇到对的人"——可能是导师、投资人、合作伙伴。遇到天乙贵人年，适合社交拓展、寻求合作。',
+    '文昌星': '主学业、文化、考试运。现代版：适合参加考试、考取证书、写作发表、学习新技能。文昌星入命或入运，学业事业有突破性进展。',
+    '禄神': '主福禄、收入、享受。现代版：正财运佳，工资收入稳定，有加薪机会。禄神在位，衣食无忧。',
+    '驿马': '主动、迁移、变化。现代版：适合出差、旅行、换工作、搬家。驿马动则有机遇，不动则错过。现代人驿马年适合拓展海外市场、跨城市发展。',
+    '桃花': '主人缘、异性缘、艺术。现代版：社交活跃，魅力提升。单身者桃花运佳，已婚者需把握边界。也代表艺术创作灵感充沛。',
+    '华盖': '主孤独、智慧、艺术。现代版：适合独立研究、创作、深度思考。华盖入命者适合做学者、艺术家、程序员等需要专注力的工作。不太适合销售等社交型工作。',
+    '将星': '主领导力、权力、决断。现代版：适合管理岗位、创业。将星到位时，决策果断，能掌控大局。但需防独断专行。',
+    '羊刃': '主刚强、竞争、血光。现代版：竞争力强，适合竞技、军警、外科医生等需要"锋利"特质的职业。但需注意人身安全和法律纠纷。羊刃年不宜冲动决策。',
+    '孤辰': '主孤独、独立、晚婚。现代版：享受独处时光，适合自由职业。婚姻宜晚，早婚多波折。现代社会中对独身主义者反而是优势。',
+    '寡宿': '主内向、安静、独居。现代版：适合远程办公、独立创作。社交欲望低，享受安静生活。不必强求社交，顺其自然。',
+    '魁罡': '主刚毅、果断、领导力。现代版：天生的领导者，有魄力有担当。适合创业、管理、军警。但需注意刚极易折，学会柔性管理。',
+    '十恶大败': '主破财、浪费、不善理财。现代版：需要建立强制储蓄习惯，避免冲动消费和投机。适合请专业理财顾问管理财务。',
+    '孤鸾煞': '主婚姻波折、晚婚。现代版：对感情要求高，不将就。建议晚婚（30岁后），婚前充分了解对方。现代社会中不婚也是一种选择。',
+    '阴阳差错': '主婚姻不顺、沟通困难。现代版：夫妻之间需加强沟通，学习两性相处之道。可以寻求婚姻咨询帮助。'
+  };
+  
+  return details[shenShaName] || null;
+}
+
+console.log('Enhanced Bazi module loaded.');

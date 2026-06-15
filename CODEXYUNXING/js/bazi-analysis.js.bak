@@ -1,0 +1,497 @@
+/**
+ * 八字分析引擎
+ * 综合滴天髓、子平、盲派、千里命稿，生成详细命理分析
+ */
+
+class BaziAnalysisEngine {
+  constructor() {
+    this.engine = baziEngine;
+  }
+
+  /**
+   * 生成完整命盘分析报告
+   */
+  generateReport(bazi) {
+    const sections = [];
+    
+    sections.push(this.generateOverview(bazi));
+    sections.push(this.generateDayMasterAnalysis(bazi));
+    sections.push(this.generateWuxingAnalysis(bazi));
+    sections.push(this.generateNayinAnalysis(bazi));
+    sections.push(this.generateShiShenAnalysis(bazi));
+    sections.push(this.generateShenShaAnalysis(bazi));
+    sections.push(this.generateDaYunAnalysis(bazi));
+    sections.push(this.generateMarriageAnalysis(bazi));
+    sections.push(this.generateCareerAnalysis(bazi));
+    sections.push(this.generateHealthAnalysis(bazi));
+    sections.push(this.generateMingGongAnalysis(bazi));
+    
+    return sections.join('\n\n');
+  }
+
+  /**
+   * 命盘总览
+   */
+  generateOverview(bazi) {
+    const riGan = bazi.riGan;
+    const riWuxing = bazi.riWuxing;
+    const str = this.engine.judgeDayMasterStrength(bazi);
+    const nayin = bazi.nayin.day;
+    const shengxiao = bazi.shengXiao;
+    
+    let text = '═══════════════ 【命盘总览】 ═══════════════\n\n';
+    text += `日主：${riGan}（${riWuxing}）  生肖：${shengxiao}\n`;
+    text += `日柱纳音：${nayin}  日主强弱：${str}\n\n`;
+    
+    text += '【四柱排盘】\n';
+    text += `┌───────┬────────┬────────┬────────┬────────┐\n`;
+    text += `│  柱位  │  年柱  │  月柱  │  日柱  │  时柱  │\n`;
+    text += `├───────┼────────┼────────┼────────┼────────┤\n`;
+    text += `│ 天干  │   ${bazi.yearPillar.gan}    │   ${bazi.monthPillar.gan}    │   ${bazi.dayPillar.gan}    │   ${bazi.hourPillar.gan}    │\n`;
+    text += `│ 地支  │   ${bazi.yearPillar.zhi}    │   ${bazi.monthPillar.zhi}    │   ${bazi.dayPillar.zhi}    │   ${bazi.hourPillar.zhi}    │\n`;
+    text += `│ 藏干  │${bazi.cangGan.year.join('')}│${bazi.cangGan.month.join('')}│${bazi.cangGan.day.join('')}│${bazi.cangGan.hour.join('')}│\n`;
+    text += `│ 纳音  │${bazi.nayin.year}│${bazi.nayin.month}│${bazi.nayin.day}│${bazi.nayin.hour}│\n`;
+    text += `│ 十神  │${bazi.shiShen.year}│${bazi.shiShen.month}│ ${bazi.shiShen.day}│${bazi.shiShen.hour}│\n`;
+    text += `│ 长生  │${bazi.changSheng.year}│${bazi.changSheng.month}│${bazi.changSheng.day}│${bazi.changSheng.hour}│\n`;
+    text += `└───────┴────────┴────────┴────────┴────────┘\n`;
+    
+    // 三垣
+    text += '\n【三垣】\n';
+    text += `胎元：${bazi.sanYuan.taiYuan.ganZhi}  命宫：${bazi.sanYuan.mingGong.ganZhi}  身宫：${bazi.sanYuan.shenGong.ganZhi}\n`;
+    text += `起运：${bazi.qiYunAge.qiYunAge}岁起运\n`;
+    
+    return text;
+  }
+
+  /**
+   * 日主分析 - 结合滴天髓
+   */
+  generateDayMasterAnalysis(bazi) {
+    const riGan = bazi.riGan;
+    const riWuxing = bazi.riWuxing;
+    const str = this.engine.judgeDayMasterStrength(bazi);
+    
+    let text = '\n═══════════════ 【日主分析·滴天髓】 ═══════════════\n\n';
+    
+    // 滴天髓十天干论述
+    const diTianSui = {
+      '甲': '甲木参天，脱胎要火。春不容金，秋不容土。火炽乘龙，水宕骑虎。地润天和，植立千古。',
+      '乙': '乙木虽柔，刲羊解牛。怀丁抱丙，跨凤乘猴。虚湿之地，骑马亦忧。藤萝系甲，可春可秋。',
+      '丙': '丙火猛烈，欺霜侮雪。能煅庚金，逢辛反怯。土众成慈，水猖显节。虎马犬乡，甲来焚灭。',
+      '丁': '丁火柔中，内性昭融。抱乙而孝，合壬而忠。旺而不烈，衰而不穷。如有嫡母，可秋可冬。',
+      '戊': '戊土固重，既中且正。静翕动辟，万物司命。水润物生，火燥物病。若在艮坤，怕冲宜静。',
+      '己': '己土卑湿，中正蓄藏。不愁木盛，不畏水狂。火少火晦，金多金光。若要物旺，宜助宜帮。',
+      '庚': '庚金带煞，刚健为最。得水而清，得火而锐。土润则生，土干则脆。能赢甲兄，输于乙妹。',
+      '辛': '辛金软弱，温润而清。畏土之叠，乐水之盈。能扶社稷，能救生灵。热则喜母，寒则喜丁。',
+      '壬': '壬水通河，能泄金气。刚中之德，周流不滞。通根透癸，冲天奔地。化则有情，从则相济。',
+      '癸': '癸水至弱，达于天津。得龙而运，功化斯神。不愁火土，不论庚辛。合戊见火，化象斯真。'
+    };
+    
+    text += `【${riGan}日主赋】\n`;
+    text += diTianSui[riGan] + '\n\n';
+    
+    // 日主强弱分析
+    text += `【日主强弱】${str}\n`;
+    
+    if (str.includes('旺')) {
+      text += '日主旺相，精力充沛，独立自主性强。身旺能任财官，但需防刚愎自用。\n';
+      text += '喜克泄耗（官杀、食伤、财星），忌生扶（印星、比劫）。\n';
+    } else if (str.includes('弱')) {
+      text += '日主偏弱，性格柔顺，善于借助外力。身弱需印比扶持，喜得贵人相助。\n';
+      text += '喜生扶（印星、比劫），忌克泄耗（官杀、食伤、财星）。\n';
+    } else {
+      text += '日主中和，性格平和圆融，适应力强，能屈能伸。\n';
+      text += '五行平衡者，一生安稳，但大运流年会影响强弱走向。\n';
+    }
+    
+    // 日柱地支分析
+    const riZhi = bazi.dayPillar.zhi;
+    if (RI_ZHI_FENXI[riZhi]) {
+      text += '\n【日柱配偶宫】\n';
+      text += RI_ZHI_FENXI[riZhi] + '\n';
+    }
+    
+    return text;
+  }
+
+  /**
+   * 五行分析
+   */
+  generateWuxingAnalysis(bazi) {
+    const wc = bazi.wuxingCount;
+    const riWuxing = bazi.riWuxing;
+    
+    let text = '\n═══════════════ 【五行分析】 ═══════════════\n\n';
+    
+    const wuxingNames = ['金', '木', '水', '火', '土'];
+    const wuxingDesc = {
+      '金': '主义，性刚烈，代表决断力和执行力',
+      '木': '主仁，性温和，代表生长力和创造力',
+      '水': '主智，性聪慧，代表智慧和变通力',
+      '火': '主礼，性急躁，代表热情和行动力',
+      '土': '主信，性厚重，代表诚信和包容力'
+    };
+    
+    text += '五行分布：\n';
+    wuxingNames.forEach(wx => {
+      const val = Math.round(wc[wx] * 10) / 10;
+      const bar = '█'.repeat(Math.round(val * 2));
+      text += `  ${wx}：${bar} ${val}\n`;
+    });
+    
+    // 五行缺失分析
+    wuxingNames.forEach(wx => {
+      if (wc[wx] < 0.5) {
+        text += `\n⚠ ${wx}弱：${wuxingDesc[wx]}。${wx === riWuxing ? '日主五行弱，需印比帮扶。' : `命局缺${wx}，需大运流年补充。`}\n`;
+      }
+    });
+    
+    // 五行过旺分析
+    wuxingNames.forEach(wx => {
+      if (wc[wx] > 5) {
+        text += `\n⚠ ${wx}过旺：${wuxingDesc[wx]}。五行偏枯，需注意对应方面的失衡。\n`;
+      }
+    });
+    
+    return text;
+  }
+
+  /**
+   * 纳音分析
+   */
+  generateNayinAnalysis(bazi) {
+    let text = '\n═══════════════ 【纳音分析】 ═══════════════\n\n';
+    
+    const nianNayin = bazi.nayin.year;
+    const yueNayin = bazi.nayin.month;
+    const riNayin = bazi.nayin.day;
+    const shiNayin = bazi.nayin.hour;
+    
+    text += `年柱纳音：${nianNayin} - ${NAYIN_FENXI[nianNayin] || ''}\n\n`;
+    text += `月柱纳音：${yueNayin} - ${NAYIN_FENXI[yueNayin] || ''}\n\n`;
+    text += `日柱纳音：${riNayin} - ${NAYIN_FENXI[riNayin] || ''}\n\n`;
+    text += `时柱纳音：${shiNayin} - ${NAYIN_FENXI[shiNayin] || ''}\n`;
+    
+    return text;
+  }
+
+  /**
+   * 十神分析
+   */
+  generateShiShenAnalysis(bazi) {
+    let text = '\n═══════════════ 【十神分析·子平】 ═══════════════\n\n';
+    
+    const riGan = bazi.riGan;
+    const shiShenCount = {};
+    ['year', 'month', 'day', 'hour'].forEach(pillar => {
+      const ss = bazi.shiShen[pillar];
+      shiShenCount[ss] = (shiShenCount[ss] || 0) + 1;
+    });
+    
+    text += '十神分布：\n';
+    SHI_SHEN.forEach(ss => {
+      const count = shiShenCount[ss] || 0;
+      text += `  ${ss}：${count}个\n`;
+    });
+    
+    const shiShenAnalysis = {
+      '比肩': '比肩多者，自我意识强，独立自主，但易与人竞争，朋友多而助力少。',
+      '劫财': '劫财多者，为人讲义气，但易破财，不宜合作投资，需防朋友拖累。',
+      '食神': '食神多者，聪明温厚，有口福，善于享受生活，有艺术天赋。',
+      '伤官': '伤官多者，才华横溢，但锋芒毕露，易得罪人，女命需防婚姻不顺。',
+      '偏财': '偏财多者，慷慨大方，善于抓住商机，有投机运，但不善守财。',
+      '正财': '正财多者，勤劳务实，重视积蓄，对家庭负责，但过于节俭。',
+      '偏官': '偏官（七杀）多者，有魄力有权威，事业心强，但压力大，需有制化。',
+      '正官': '正官多者，遵纪守法，重视名誉，适合公职，但过于保守。',
+      '偏印': '偏印多者，有特殊才能，思维独特，但孤僻寡合，与六亲缘薄。',
+      '正印': '正印多者，仁慈善良，有学识，得长辈贵人相助，但依赖性强。'
+    };
+    
+    text += '\n十神解读：\n';
+    Object.entries(shiShenCount).forEach(([ss, count]) => {
+      if (count >= 2 && shiShenAnalysis[ss]) {
+        text += `  · ${ss}(${count}个)：${shiShenAnalysis[ss]}\n`;
+      }
+    });
+    
+    return text;
+  }
+
+  /**
+   * 神煞分析
+   */
+  generateShenShaAnalysis(bazi) {
+    let text = '\n═══════════════ 【神煞分析】 ═══════════════\n\n';
+    
+    const shenSha = bazi.shenSha;
+    
+    if (shenSha.ji.length > 0) {
+      text += '【吉神】\n';
+      shenSha.ji.forEach(s => { text += `  ☆ ${s}\n`; });
+    }
+    
+    if (shenSha.xiong.length > 0) {
+      text += '\n【凶煞】\n';
+      shenSha.xiong.forEach(s => { text += `  ★ ${s}\n`; });
+    }
+    
+    if (shenSha.other.length > 0) {
+      text += '\n【其他】\n';
+      shenSha.other.forEach(s => { text += `  · ${s}\n`; });
+    }
+    
+    if (shenSha.ji.length === 0 && shenSha.xiong.length === 0 && shenSha.other.length === 0) {
+      text += '命局神煞不多，以五行生克为主断之。\n';
+    }
+    
+    // 神煞综合解读
+    text += '\n【神煞综论】\n';
+    if (shenSha.ji.some(s => s.includes('天乙贵人'))) {
+      text += '命带天乙贵人，一生逢凶化吉，遇难成祥，贵人运佳。\n';
+    }
+    if (shenSha.ji.some(s => s.includes('文昌星'))) {
+      text += '命带文昌，聪明好学，适合从事文化、教育、学术相关工作。\n';
+    }
+    if (shenSha.ji.some(s => s.includes('魁罡'))) {
+      text += '命带魁罡，性格刚强，有领导才能，适合军警、管理岗位。\n';
+    }
+    if (shenSha.xiong.some(s => s.includes('孤辰') || s.includes('寡宿'))) {
+      text += '命带孤辰寡宿，性格内向孤僻，不喜热闹，婚姻宜迟。\n';
+    }
+    if (shenSha.xiong.some(s => s.includes('十恶大败'))) {
+      text += '日坐十恶大败，钱财易散，不宜投机，需谨慎理财。\n';
+    }
+    if (shenSha.other.some(s => s.includes('桃花'))) {
+      text += '命带桃花，异性缘佳，但需防情缘纷扰，影响事业。\n';
+    }
+    
+    return text;
+  }
+
+  /**
+   * 大运分析
+   */
+  generateDaYunAnalysis(bazi) {
+    let text = '\n═══════════════ 【大运分析·千里命稿】 ═══════════════\n\n';
+    
+    const qiYun = bazi.qiYunAge.qiYunAge;
+    text += `起运年龄：${qiYun}岁\n\n`;
+    text += '大运排盘：\n';
+    
+    bazi.daYun.forEach((yun, idx) => {
+      const startAge = qiYun + idx * 10;
+      const endAge = startAge + 9;
+      yun.startAge = startAge;
+      text += `  ${idx + 1}. ${startAge}-${endAge}岁  ${yun.ganZhi}（${yun.nayin}）\n`;
+    });
+    
+    // 简单的大运吉凶判断
+    const str = this.engine.judgeDayMasterStrength(bazi);
+    const riWuxing = bazi.riWuxing;
+    
+    text += '\n【大运简析】\n';
+    bazi.daYun.forEach((yun, idx) => {
+      const yunWuxing = GAN_WUXING[yun.gan];
+      let jiXiong = '平';
+      
+      if (str.includes('旺')) {
+        if (yunWuxing === riWuxing || this.isYinXing(riWuxing, yunWuxing)) jiXiong = '忌';
+        else jiXiong = '喜';
+      } else if (str.includes('弱')) {
+        if (yunWuxing === riWuxing || this.isYinXing(riWuxing, yunWuxing)) jiXiong = '喜';
+        else jiXiong = '忌';
+      }
+      
+      const startAge = qiYun + idx * 10;
+      const endAge = startAge + 9;
+      if (idx < 5) { // 只显示前5步大运的简析
+        text += `  ${startAge}-${endAge}岁 ${yun.ganZhi}：${jiXiong === '喜' ? '喜运，顺遂' : jiXiong === '忌' ? '忌运，多阻' : '平运'}\n`;
+      }
+    });
+    
+    return text;
+  }
+
+  /**
+   * 判断是否为印星（生我者）
+   */
+  isYinXing(riWuxing, otherWuxing) {
+    const shengCycle = { '木': '火', '火': '土', '土': '金', '金': '水', '水': '木' };
+    return shengCycle[otherWuxing] === riWuxing;
+  }
+
+  /**
+   * 婚姻分析
+   */
+  generateMarriageAnalysis(bazi) {
+    let text = '\n═══════════════ 【婚姻分析·盲派】 ═══════════════\n\n';
+    
+    const riZhi = bazi.dayPillar.zhi;
+    const riGan = bazi.riGan;
+    const isMale = bazi.isMale;
+    
+    // 配偶星
+    let peiOuXing;
+    if (isMale) {
+      peiOuXing = GAN_YINYANG[riGan] === 1 ? '正财' : '偏财';
+    } else {
+      peiOuXing = GAN_YINYANG[riGan] === 1 ? '正官' : '偏官';
+    }
+    
+    text += `配偶星：${peiOuXing}\n`;
+    text += `配偶宫：${riZhi}（${ZHI_WUXING[riZhi]}）\n\n`;
+    
+    // 盲派婚姻歌诀应用
+    const shenSha = bazi.shenSha;
+    const yueZhi = bazi.monthPillar.zhi;
+    
+    // 桃花判断
+    if (shenSha.other.some(s => s.includes('桃花'))) {
+      text += '【桃花入命】\n';
+      text += '命带桃花，异性缘佳，感情生活丰富。但桃花过多，需防婚外情缘，影响婚姻稳定。\n';
+      text += '盲派云："桃花一生多艳遇，是非林里反为家。"\n\n';
+    }
+    
+    // 孤鸾煞
+    if (shenSha.xiong.some(s => s.includes('孤鸾'))) {
+      text += '【孤鸾煞】\n';
+      text += '命犯孤鸾煞，婚恋多有波折。《三命通会》云："孤鸾犯日本无儿，一见官星得子奇。"\n';
+      text += '建议晚婚，婚后需相互包容，方可白首偕老。\n\n';
+    }
+    
+    // 阴阳差错
+    if (shenSha.other.some(s => s.includes('阴阳差错'))) {
+      text += '【阴阳差错日】\n';
+      text += '阴阳差错日生人，婚姻易有波折，夫妻沟通需多用心。\n';
+      text += '"阴阳差错不风流，花烛迎郎不自由。"\n\n';
+    }
+    
+    // 日坐比劫
+    const riZhiCangGan = ZHI_CANG_GAN[riZhi] || [];
+    if (riZhiCangGan.some(g => SHI_SHEN_MAP[riGan][g] === '比肩' || SHI_SHEN_MAP[riGan][g] === '劫财')) {
+      text += '【日坐比劫】\n';
+      text += '日坐比劫，配偶性格独立刚强，夫妻易有争执，需相互忍让。\n\n';
+    }
+    
+    // 综合建议
+    text += '【婚姻综论】\n';
+    text += `日主${riGan}，${isMale ? '男' : '女'}命，日坐${riZhi}。\n`;
+    text += '婚姻需顺其自然，不可强求。择偶以性格相合为先，门当户对为次。\n';
+    
+    return text;
+  }
+
+  /**
+   * 事业分析
+   */
+  generateCareerAnalysis(bazi) {
+    let text = '\n═══════════════ 【事业分析】 ═══════════════\n\n';
+    
+    const shiShen = bazi.shiShen;
+    const riWuxing = bazi.riWuxing;
+    const riGan = bazi.riGan;
+    
+    text += '【适合行业】\n';
+    
+    // 根据五行推荐行业
+    const wuxingCareers = {
+      '金': '金融、法律、军警、机械、五金、汽车、牙医',
+      '木': '教育、文化、出版、园艺、医药、纺织、设计',
+      '水': '贸易、物流、航运、旅游、传媒、演艺、渔业',
+      '火': '能源、餐饮、美容、化工、电子、互联网、娱乐',
+      '土': '房地产、建筑、农业、矿产、仓储、陶瓷、中介'
+    };
+    
+    text += `日主五行属${riWuxing}，适合行业：${wuxingCareers[riWuxing]}\n\n`;
+    
+    // 根据十神组合分析
+    text += '【命局特点】\n';
+    
+    if (shiShen.year === '偏官' || shiShen.month === '偏官') {
+      text += '年/月带七杀，有魄力有担当，适合创业、军警、管理岗位。\n';
+    }
+    if (shiShen.day === '偏官') {
+      text += '日坐七杀，压力与机遇并存，需在压力中成长。\n';
+    }
+    if (shiShen.year === '正官' || shiShen.month === '正官') {
+      text += '年/月带正官，适合公务员、事业单位、大企业等规范环境。\n';
+    }
+    if (shiShen.year === '食神' || shiShen.month === '食神') {
+      text += '带食神星，有艺术天赋，适合创作、设计、美食等行业。\n';
+    }
+    if (shiShen.year === '伤官' || shiShen.month === '伤官') {
+      text += '带伤官星，才华出众，适合技术、研发、自由职业。\n';
+    }
+    if (shiShen.year === '偏财' || shiShen.month === '偏财') {
+      text += '带偏财星，有商业头脑，适合经商、投资、贸易。\n';
+    }
+    if (shiShen.year === '正财' || shiShen.month === '正财') {
+      text += '带正财星，踏实肯干，适合稳定工作，收入稳定增长。\n';
+    }
+    if (shiShen.year === '正印' || shiShen.month === '正印') {
+      text += '带正印星，好学上进，适合学术、教育、研究领域。\n';
+    }
+    if (shiShen.year === '偏印' || shiShen.month === '偏印') {
+      text += '带偏印星，思维独特，适合技术研发、玄学、特殊技能领域。\n';
+    }
+    
+    text += '\n【事业建议】\n';
+    text += '事业发展需结合大运走势。青少年时期以学习积累为主，中年时期以发展为重，晚年宜守成。\n';
+    
+    return text;
+  }
+
+  /**
+   * 健康分析
+   */
+  generateHealthAnalysis(bazi) {
+    let text = '\n═══════════════ 【健康分析】 ═══════════════\n\n';
+    
+    const wc = bazi.wuxingCount;
+    
+    // 五行对应身体部位
+    const wuxingHealth = {
+      '金': '肺、气管、呼吸道、皮肤、牙齿、骨骼',
+      '木': '肝胆、四肢、筋骨、神经系统',
+      '水': '肾脏、泌尿系统、耳朵、生殖系统',
+      '火': '心脏、血液、眼睛、小肠、循环系统',
+      '土': '脾胃、消化系统、肌肉、皮肤'
+    };
+    
+    text += '【五行健康提示】\n';
+    ['金', '木', '水', '火', '土'].forEach(wx => {
+      if (wc[wx] < 0.5) {
+        text += `⚠ ${wx}弱：需注意${wuxingHealth[wx]}。\n`;
+      }
+      if (wc[wx] > 5) {
+        text += `⚠ ${wx}过旺：${wuxingHealth[wx]}易出问题。\n`;
+      }
+    });
+    
+    text += '\n【盲派健康诀】\n';
+    text += '"三垣之间有穿绝，身体不佳又多病。"\n';
+    text += '"三者之间有相冲，一生奔波要走动。"\n';
+    
+    return text;
+  }
+
+  /**
+   * 命宫分析
+   */
+  generateMingGongAnalysis(bazi) {
+    let text = '\n═══════════════ 【命宫分析·盲派】 ═══════════════\n\n';
+    
+    const mingZhi = bazi.sanYuan.mingGong.zhi;
+    if (MING_GONG_JU[mingZhi]) {
+      text += `命宫在${mingZhi}：\n`;
+      text += MING_GONG_JU[mingZhi] + '\n';
+    }
+    
+    return text;
+  }
+}
+
+// 导出分析引擎实例
+const baziAnalysis = new BaziAnalysisEngine();
+
+console.log('Bazi Analysis Engine loaded successfully.');

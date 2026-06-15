@@ -1,0 +1,554 @@
+/**
+ * 八字命盘核心计算引擎
+ * 整合滴天髓、子平、盲派算法
+ */
+
+class BaziEngine {
+  constructor() {
+    this.dayGanZhiCache = null;
+    this.cacheYear = null;
+    this.cacheMonth = null;
+    this.cacheDay = null;
+  }
+
+  /**
+   * 计算完整的八字命盘
+   * @param {number} year - 公历年
+   * @param {number} month - 公历月 (1-12)
+   * @param {number} day - 公历日
+   * @param {number} hour - 时间 (0-23)
+   * @param {number} minute - 分钟 (0-59)
+   * @param {boolean} isMale - 性别（true=男 false=女）
+   * @returns {object} 完整命盘数据
+   */
+  calculate(year, month, day, hour, minute, isMale) {
+    // 根据出生时间调整日柱（23点后算次日）
+    let adjustedDate = new Date(year, month - 1, day, hour, minute);
+    let adjustedYear = adjustedDate.getFullYear();
+    let adjustedMonth = adjustedDate.getMonth() + 1;
+    let adjustedDay = adjustedDate.getDate();
+    let adjustedHour = adjustedDate.getHours();
+    
+    // 计算四柱
+    const yearPillar = this.calcYearPillar(adjustedYear, adjustedMonth, adjustedDay);
+    const monthPillar = this.calcMonthPillar(adjustedYear, adjustedMonth, adjustedDay);
+    const dayPillar = this.calcDayPillar(adjustedYear, adjustedMonth, adjustedDay);
+    const hourPillar = this.calcHourPillar(dayPillar.gan, adjustedHour);
+    
+    // 日干
+    const riGan = dayPillar.gan;
+    
+    // 地支藏干
+    const cangGan = {
+      year: ZHI_CANG_GAN[yearPillar.zhi],
+      month: ZHI_CANG_GAN[monthPillar.zhi],
+      day: ZHI_CANG_GAN[dayPillar.zhi],
+      hour: ZHI_CANG_GAN[hourPillar.zhi]
+    };
+    
+    // 纳音
+    const nayin = {
+      year: this.getNayin(yearPillar.ganZhi),
+      month: this.getNayin(monthPillar.ganZhi),
+      day: this.getNayin(dayPillar.ganZhi),
+      hour: this.getNayin(hourPillar.ganZhi)
+    };
+    
+    // 十神
+    const shiShen = {
+      year: SHI_SHEN_MAP[riGan][yearPillar.gan],
+      month: SHI_SHEN_MAP[riGan][monthPillar.gan],
+      day: SHI_SHEN_MAP[riGan][dayPillar.gan],
+      hour: SHI_SHEN_MAP[riGan][hourPillar.gan]
+    };
+    
+    // 十二长生（日干对应各柱地支）
+    const changSheng = {
+      year: this.getChangSheng(riGan, yearPillar.zhi),
+      month: this.getChangSheng(riGan, monthPillar.zhi),
+      day: this.getChangSheng(riGan, dayPillar.zhi),
+      hour: this.getChangSheng(riGan, hourPillar.zhi)
+    };
+    
+    // 空亡
+    const kongWang = this.calcKongWang(dayPillar.ganZhi);
+    
+    // 神煞
+    const shenSha = this.calcShenSha(riGan, yearPillar, monthPillar, dayPillar, hourPillar, adjustedYear);
+    
+    // 大运
+    const daYun = this.calcDaYun(year, month, day, monthPillar, adjustedYear, adjustedMonth, adjustedDay, isMale);
+    
+    // 胎元、命宫、身宫
+    const sanYuan = this.calcSanYuan(monthPillar, hourPillar);
+    
+    // 起运年龄
+    const qiYunAge = this.calcQiYun(year, month, day, monthPillar, adjustedYear, adjustedMonth, adjustedDay, isMale);
+
+    // 生肖
+    const shengXiao = SHENG_XIAO[DI_ZHI.indexOf(yearPillar.zhi)];
+    
+    // 日柱五行
+    const riWuxing = GAN_WUXING[riGan];
+    
+    // 五行统计
+    const wuxingCount = this.countWuxing(yearPillar, monthPillar, dayPillar, hourPillar, cangGan);
+
+    return {
+      year, month, day, hour, minute, isMale,
+      yearPillar, monthPillar, dayPillar, hourPillar,
+      riGan, riWuxing, shengXiao,
+      cangGan, nayin, shiShen, changSheng,
+      kongWang, shenSha, daYun, sanYuan,
+      qiYunAge, wuxingCount
+    };
+  }
+
+  /**
+   * 计算年柱
+   * 以立春为界，立春前按上一年算
+   */
+  calcYearPillar(year, month, day) {
+    // 立春通常在2月4日左右
+    let effectiveYear = year;
+    if (month < 2 || (month === 2 && day < 4)) {
+      effectiveYear = year - 1;
+    }
+    
+    const ganIdx = (effectiveYear - 4) % 10;
+    const zhiIdx = (effectiveYear - 4) % 12;
+    const gan = TIAN_GAN[ganIdx < 0 ? ganIdx + 10 : ganIdx];
+    const zhi = DI_ZHI[zhiIdx < 0 ? zhiIdx + 12 : zhiIdx];
+    
+    return { gan, zhi, ganZhi: gan + zhi };
+  }
+
+  /**
+   * 计算月柱
+   * 以节气为界，正月为寅月（立春到惊蛰）
+   */
+  calcMonthPillar(year, month, day) {
+    // 节气日期（近似）
+    const jieQiDayMap = { 2:4, 3:6, 4:5, 5:6, 6:6, 7:7, 8:8, 9:8, 10:8, 11:8, 12:7, 1:6 };
+    
+    // 确定地支月份
+    let yueZhiIdx;
+    if (month === 1) {
+      yueZhiIdx = (day >= 6) ? 0 : 11; // 小寒后为丑月(12), 否则还是子月(11)
+    } else {
+      const jqDay = jieQiDayMap[month] || 6;
+      if (day >= jqDay) {
+        yueZhiIdx = month - 2; // 立春后寅=0(正月), 惊蛰后卯=1(二月)...
+      } else {
+        yueZhiIdx = month - 3;
+      }
+    }
+    
+    if (yueZhiIdx < 0) yueZhiIdx += 12;
+    
+    const zhi = YUE_ZHI[yueZhiIdx];
+    
+    // 根据年干定月干
+    const yearPillar = this.calcYearPillar(year, month, day);
+    const gan = YUE_GAN_MAP[yearPillar.gan][yueZhiIdx];
+    
+    return { gan, zhi, ganZhi: gan + zhi };
+  }
+
+  /**
+   * 计算日柱
+   * 使用精确的数学算法：以1900-01-01为甲戌日（第11位）
+   */
+  calcDayPillar(year, month, day) {
+    // 计算距离1900-01-01的天数
+    const baseDate = new Date(1900, 0, 1);
+    const targetDate = new Date(year, month - 1, day);
+    let daysDiff = Math.floor((targetDate - baseDate) / (1000 * 60 * 60 * 24));
+    
+    // 1900-01-01 是甲戌日，在六十甲子中排第11位
+    const baseIdx = 10; // 0-indexed: 甲戌是第10（0=甲子）
+    let idx = (baseIdx + daysDiff) % 60;
+    if (idx < 0) idx += 60;
+    
+    const gan = TIAN_GAN[idx % 10];
+    const zhi = DI_ZHI[idx % 12];
+    
+    return { gan, zhi, ganZhi: gan + zhi };
+  }
+
+  /**
+   * 计算时柱
+   */
+  calcHourPillar(riGan, hour) {
+    // 确定时支：23-1为子时(0), 1-3为丑时(1), ...
+    let shiZhiIdx;
+    if (hour === 23 || hour === 0) {
+      shiZhiIdx = 0; // 子时
+    } else {
+      shiZhiIdx = Math.floor((hour + 1) / 2);
+    }
+    
+    const zhi = SHI_ZHI[shiZhiIdx];
+    const gan = SHI_GAN_MAP[riGan][shiZhiIdx];
+    
+    return { gan, zhi, ganZhi: gan + zhi };
+  }
+
+  /**
+   * 获取纳音
+   */
+  getNayin(ganZhi) {
+    return NAYIN_MAP[ganZhi] || '未知';
+  }
+
+  /**
+   * 获取十二长生状态
+   */
+  getChangSheng(gan, zhi) {
+    const zhiIdx = DI_ZHI.indexOf(zhi);
+    const changShengZhis = CHANG_SHENG_TABLE[gan];
+    if (!changShengZhis) return '未知';
+    const idx = changShengZhis.indexOf(zhi);
+    if (idx === -1) return '未知';
+    return CHANG_SHENG_NAMES[idx];
+  }
+
+  /**
+   * 计算空亡
+   * 根据日柱干支确定空亡的两个地支
+   */
+  calcKongWang(riGanZhi) {
+    // 六十甲子中，每旬（10天干配10地支）有两个地支轮空
+    const riGan = riGanZhi[0];
+    const riZhi = riGanZhi[1];
+    
+    // 找到日干支在六十甲子中的位置
+    let riIdx = -1;
+    for (let i = 0; i < LIUSHI_JIAZI.length; i++) {
+      if (LIUSHI_JIAZI[i].ganZhi === riGanZhi) {
+        riIdx = i;
+        break;
+      }
+    }
+    
+    if (riIdx === -1) return ['', ''];
+    
+    // 计算本旬起始位置
+    const xunStart = Math.floor(riIdx / 10) * 10;
+    
+    // 本旬中已有的地支
+    const usedZhis = [];
+    for (let i = xunStart; i < xunStart + 10; i++) {
+      usedZhis.push(LIUSHI_JIAZI[i].ganZhi[1]);
+    }
+    
+    // 找出缺少的两个地支（空亡）
+    const kongWangZhis = [];
+    for (let i = 0; i < 12; i++) {
+      const zhi = DI_ZHI[(DI_ZHI.indexOf(usedZhis[9]) + 1 + i) % 12];
+      if (!usedZhis.includes(zhi) && kongWangZhis.length < 2) {
+        kongWangZhis.push(zhi);
+      }
+    }
+    
+    return kongWangZhis;
+  }
+
+  /**
+   * 计算神煞
+   */
+  calcShenSha(riGan, yearPillar, monthPillar, dayPillar, hourPillar, year) {
+    const result = { ji: [], xiong: [], other: [] };
+    const riZhi = dayPillar.zhi;
+    const nianZhi = yearPillar.zhi;
+    const yueZhi = monthPillar.zhi;
+    const allZhis = [nianZhi, yueZhi, riZhi, hourPillar.zhi];
+    const riGanZhi = dayPillar.ganZhi;
+    
+    // 天乙贵人
+    const tianYi = TIAN_YI_GUI_REN[riGan] || '';
+    const tianYiZhis = [tianYi[0], tianYi[1]];
+    allZhis.forEach((zhi, idx) => {
+      if (tianYiZhis.includes(zhi)) {
+        result.ji.push(`${['年','月','日','时'][idx]}柱天乙贵人`);
+      }
+    });
+    
+    // 文昌
+    const wenChangZhi = WEN_CHANG[riGan];
+    allZhis.forEach((zhi, idx) => {
+      if (zhi === wenChangZhi) {
+        result.ji.push(`${['年','月','日','时'][idx]}柱文昌星`);
+      }
+    });
+    
+    // 禄神
+    const luZhi = LU_SHEN[riGan];
+    allZhis.forEach((zhi, idx) => {
+      if (zhi === luZhi) {
+        result.ji.push(`${['年','月','日','时'][idx]}柱禄神`);
+      }
+    });
+    
+    // 羊刃
+    const yangRenZhi = YANG_REN[riGan];
+    allZhis.forEach((zhi, idx) => {
+      if (zhi === yangRenZhi) {
+        result.xiong.push(`${['年','月','日','时'][idx]}柱羊刃`);
+      }
+    });
+    
+    // 驿马
+    const findSanHeKey = (zhi) => {
+      if ('寅午戌'.includes(zhi)) return '寅午戌';
+      if ('申子辰'.includes(zhi)) return '申子辰';
+      if ('巳酉丑'.includes(zhi)) return '巳酉丑';
+      if ('亥卯未'.includes(zhi)) return '亥卯未';
+      return '';
+    };
+    const yiMaZhi = YI_MA[findSanHeKey(riZhi)] || YI_MA[findSanHeKey(nianZhi)];
+    allZhis.forEach((zhi, idx) => {
+      if (zhi === yiMaZhi) result.ji.push(`${['年','月','日','时'][idx]}柱驿马星`);
+    });
+    
+    // 桃花
+    const taoHuaZhi = TAO_HUA[findSanHeKey(riZhi)] || TAO_HUA[findSanHeKey(nianZhi)];
+    allZhis.forEach((zhi, idx) => {
+      if (zhi === taoHuaZhi) result.other.push(`${['年','月','日','时'][idx]}柱桃花`);
+    });
+    
+    // 华盖
+    const huaGaiZhi = HUA_GAI[findSanHeKey(riZhi)] || HUA_GAI[findSanHeKey(nianZhi)];
+    allZhis.forEach((zhi, idx) => {
+      if (zhi === huaGaiZhi) result.ji.push(`${['年','月','日','时'][idx]}柱华盖星`);
+    });
+    
+    // 孤辰
+    const findGuGuaKey = (zhi) => {
+      if ('亥子丑'.includes(zhi)) return '亥子丑';
+      if ('寅卯辰'.includes(zhi)) return '寅卯辰';
+      if ('巳午未'.includes(zhi)) return '巳午未';
+      if ('申酉戌'.includes(zhi)) return '申酉戌';
+      return '';
+    };
+    const guChenZhi = GU_CHEN[findGuGuaKey(nianZhi)];
+    if (guChenZhi && allZhis.includes(guChenZhi)) result.xiong.push('命带孤辰');
+    
+    const guaSuZhi = GUA_SU[findGuGuaKey(nianZhi)];
+    if (guaSuZhi && allZhis.includes(guaSuZhi)) result.xiong.push('命带寡宿');
+    
+    // 魁罡
+    if (KUI_GANG.includes(riGanZhi)) result.ji.push('日柱魁罡格');
+    
+    // 十恶大败
+    if (SHI_E_DA_BAI.includes(riGanZhi)) result.xiong.push('十恶大败日');
+    
+    // 孤鸾煞
+    if (GU_LUAN.includes(riGanZhi)) result.xiong.push('孤鸾煞');
+    
+    // 阴阳差错
+    if (YIN_YANG_CHA_CUO.includes(riGanZhi)) result.other.push('阴阳差错日');
+    
+    // 天赦
+    if (TIAN_SHE.includes(riGanZhi)) result.ji.push('天赦日');
+    
+    // 将星
+    const jiangXingZhi = JIANG_XING[findSanHeKey(riZhi)] || JIANG_XING[findSanHeKey(nianZhi)];
+    allZhis.forEach((zhi, idx) => {
+      if (zhi === jiangXingZhi) result.ji.push(`${['年','月','日','时'][idx]}柱将星`);
+    });
+    
+    return result;
+  }
+
+  /**
+   * 计算大运
+   */
+  calcDaYun(birthYear, birthMonth, birthDay, monthPillar, adjustedYear, adjustedMonth, adjustedDay, isMale) {
+    const yearGan = TIAN_GAN[(adjustedYear - 4) % 10 < 0 ? (adjustedYear - 4) % 10 + 10 : (adjustedYear - 4) % 10];
+    const isYangYear = GAN_YINYANG[yearGan] === 1;
+    
+    // 顺排：阳男阴女；逆排：阴男阳女
+    const isShunPai = (isYangYear && isMale) || (!isYangYear && !isMale);
+    
+    // 起运月柱索引
+    const yueZhiIdx = YUE_ZHI.indexOf(monthPillar.zhi);
+    const yueGanIdx = TIAN_GAN.indexOf(monthPillar.gan);
+    
+    // 生成大运（10步）
+    const daYunList = [];
+    for (let i = 1; i <= 10; i++) {
+      let newGanIdx, newZhiIdx;
+      if (isShunPai) {
+        newGanIdx = (yueGanIdx + i) % 10;
+        newZhiIdx = (yueZhiIdx + i) % 12;
+      } else {
+        newGanIdx = (yueGanIdx - i) % 10;
+        newZhiIdx = (yueZhiIdx - i) % 12;
+        if (newGanIdx < 0) newGanIdx += 10;
+        if (newZhiIdx < 0) newZhiIdx += 12;
+      }
+      
+      const gan = TIAN_GAN[newGanIdx];
+      const zhi = DI_ZHI[newZhiIdx];
+      
+      daYunList.push({
+        ganZhi: gan + zhi,
+        gan, zhi,
+        startAge: 0, // 稍后填入
+        nayin: this.getNayin(gan + zhi)
+      });
+    }
+    
+    return daYunList;
+  }
+
+  /**
+   * 计算起运年龄
+   * 阳男阴女顺数到下一个节气，阴男阳女逆数到上一个节气
+   */
+  calcQiYun(birthYear, birthMonth, birthDay, monthPillar, adjustedYear, adjustedMonth, adjustedDay, isMale) {
+    const yearGan = TIAN_GAN[(adjustedYear - 4) % 10 < 0 ? (adjustedYear - 4) % 10 + 10 : (adjustedYear - 4) % 10];
+    const isYangYear = GAN_YINYANG[yearGan] === 1;
+    const isShun = (isYangYear && isMale) || (!isYangYear && !isMale);
+    
+    // 简化的起运计算：从生日到最近节气的天数除以3
+    const jieQiDayMap = { 2:4, 3:6, 4:5, 5:6, 6:6, 7:7, 8:8, 9:8, 10:8, 11:8, 12:7, 1:6 };
+    
+    let targetMonth, targetDay;
+    if (isShun) {
+      // 顺排：找下一个节气
+      targetMonth = adjustedMonth + 1;
+      if (targetMonth > 12) targetMonth = 1;
+      targetDay = jieQiDayMap[targetMonth] || 6;
+    } else {
+      // 逆排：找上一个节气
+      targetMonth = adjustedMonth;
+      targetDay = jieQiDayMap[adjustedMonth] || 6;
+    }
+    
+    // 计算天数差
+    const birthDate = new Date(adjustedYear, adjustedMonth - 1, adjustedDay);
+    let targetDate;
+    if (isShun) {
+      targetDate = new Date(adjustedYear, targetMonth - 1, targetDay);
+      if (targetDate <= birthDate) {
+        targetDate = new Date(adjustedYear + 1, targetMonth - 1, targetDay);
+      }
+    } else {
+      targetDate = new Date(adjustedYear, targetMonth - 1, targetDay);
+      if (targetDate >= birthDate) {
+        targetDate = new Date(adjustedYear - 1, targetMonth - 1, targetDay);
+      }
+    }
+    
+    let daysDiff = Math.abs(Math.floor((targetDate - birthDate) / (1000 * 60 * 60 * 24)));
+    let age = daysDiff / 3;
+    
+    // 3天=1岁，1天=4个月
+    if (age < 1) age = 1;
+    
+    const qiYunAge = Math.ceil(age);
+    
+    // 如果是顺排，从起运年龄开始，每10年换一运
+    // 如果是逆排，也类似
+    return { qiYunAge, isShunPai: isShun };
+  }
+
+  /**
+   * 计算胎元、命宫、身宫（三垣）
+   */
+  calcSanYuan(monthPillar, hourPillar) {
+    // 胎元：月干进位一，月支进位三
+    const yueGanIdx = TIAN_GAN.indexOf(monthPillar.gan);
+    const yueZhiIdx = YUE_ZHI.indexOf(monthPillar.zhi);
+    
+    const taiGan = TIAN_GAN[(yueGanIdx + 1) % 10];
+    const taiZhi = YUE_ZHI[(yueZhiIdx + 3) % 12];
+    
+    // 命宫：子起正月逆查，生月支上起生时，顺查至卯
+    const hourZhiIdx = SHI_ZHI.indexOf(hourPillar.zhi);
+    const mingZhiIdx = (13 - yueZhiIdx + hourZhiIdx) % 12;
+    const mingZhi = SHI_ZHI[mingZhiIdx];
+    
+    // 命宫天干
+    const mingGan = YUE_GAN_MAP[monthPillar.gan][mingZhiIdx];
+    
+    // 身宫：子起正月顺查，生月支上起生时，逆推至酉
+    const shenZhiIdx = (yueZhiIdx + hourZhiIdx + 5) % 12;
+    const shenZhi = SHI_ZHI[shenZhiIdx];
+    const shenGan = YUE_GAN_MAP[monthPillar.gan][shenZhiIdx];
+    
+    return {
+      taiYuan: { ganZhi: taiGan + taiZhi, gan: taiGan, zhi: taiZhi },
+      mingGong: { ganZhi: mingGan + mingZhi, gan: mingGan, zhi: mingZhi },
+      shenGong: { ganZhi: shenGan + shenZhi, gan: shenGan, zhi: shenZhi }
+    };
+  }
+
+  /**
+   * 统计五行数量
+   */
+  countWuxing(yearPillar, monthPillar, dayPillar, hourPillar, cangGan) {
+    const count = { '金': 0, '木': 0, '水': 0, '火': 0, '土': 0 };
+    
+    // 天干五行
+    [yearPillar.gan, monthPillar.gan, dayPillar.gan, hourPillar.gan].forEach(gan => {
+      count[GAN_WUXING[gan]]++;
+    });
+    
+    // 地支五行
+    [yearPillar.zhi, monthPillar.zhi, dayPillar.zhi, hourPillar.zhi].forEach(zhi => {
+      count[ZHI_WUXING[zhi]]++;
+    });
+    
+    // 地支藏干（加权计算）
+    Object.values(cangGan).forEach(gans => {
+      gans.forEach((gan, idx) => {
+        count[GAN_WUXING[gan]] += (idx === 0 ? 0.5 : 0.25);
+      });
+    });
+    
+    return count;
+  }
+
+  /**
+   * 日主强弱判断
+   */
+  judgeDayMasterStrength(bazi) {
+    const riGan = bazi.riGan;
+    const riWuxing = bazi.riWuxing;
+    const wc = bazi.wuxingCount;
+    
+    // 简单判断：得月令 + 同类多少
+    const yueZhi = bazi.monthPillar.zhi;
+    const yueWuxing = ZHI_WUXING[yueZhi];
+    const deYueLing = (riWuxing === yueWuxing);
+    
+    // 印星（生我者）和比劫（同我者）的总数
+    const tongLei = wc[riWuxing];
+    
+    // 月支藏干中是否含日主五行
+    let hasRiWuxingInYueZhi = false;
+    if (ZHI_CANG_GAN[yueZhi]) {
+      hasRiWuxingInYueZhi = ZHI_CANG_GAN[yueZhi].some(g => GAN_WUXING[g] === riWuxing);
+    }
+    
+    let score = 0;
+    if (deYueLing) score += 3;
+    if (hasRiWuxingInYueZhi) score += 2;
+    if (tongLei >= 3) score += 2;
+    else if (tongLei >= 2) score += 1;
+    
+    if (score >= 5) return '偏旺';
+    if (score >= 3) return '中和偏旺';
+    if (score >= 2) return '中和';
+    if (score >= 1) return '中和偏弱';
+    return '偏弱';
+  }
+}
+
+// 导出引擎实例
+const baziEngine = new BaziEngine();
+
+console.log('Bazi Core Engine loaded successfully.');
